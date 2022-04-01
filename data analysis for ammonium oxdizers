@@ -1,0 +1,235 @@
+1 Microcosm
+1.1 Qiime scripts for amplicons of 341F/806R (16S rRNA gene):
+1.1.1 adjust direction of reads
+extract_barcodes.py -f reads1.fq1 -r reads2.fq2 -c barcode_paired_end -l 0 -L 0 -m for_split_16S.txt -a -o direction
+
+1.1.2 cut barcode
+extract_barcodes.py -f direction/reads1.fastq -r direction/reads2.fastq -c barcode_paired_end -l 12 -L 0 -o realcut
+
+1.1.3 quality control
+sickle pe -f realcut/reads1.fastq -r realcut/reads2.fastq -t sanger -q -l 0 -x -o filter/reads1_trimmed.fastq -p filter/reads2_trimmed.fastq -s single
+
+1.1.4 assemble reads1 and reads2
+join_paired_ends.py -f filter/reads1_trimmed.fastq -r filter/reads2_trimmed.fastq -b realcut/barcodes.fastq -o joinpairend
+
+1.1.5 assign sequences to individual samples
+split_libraries_fastq.py -i joinpairend/fastqjoin.join.fastq -b joinpairend/fastqjoin.join_barcodes.fastq -m for_split_16S.txt --store_qual_scores --rev_comp_barcode --rev_comp_mapping_barcodes --store_demultiplexed_fastq -o split_16S -q 19 -s 1 --barcode_type 12 
+
+1.1.6 identify chimera
+identify_chimeric_seqs.py -m usearch61 -i split_16S/seqs.fna -r silva_132_97_16S.fna -k -o chimera --non_chimeras_retention intersection
+
+1.1.7 remove chimera
+filter_fasta.py -f split_16S/seqs.fna -s chimera/chimeras.txt -o removechimera/seqs_chimera_filtered.fna -n
+
+1.1.8 assigne to OTUs (97%)
+pick_open_reference_otus.py -i removechimera/seqs_chimera_filtered.fna -o otu -r silva_132_97_16S.fna -m usearch61 -p param_g.txt --suppress_align_and_tree
+
+1.1.9 summarize taxonomy
+summarize_taxa.py -i otu_table_mc2_w_tax.biom -o summary
+
+1.2 R scripts for barplot
+1.2.1 for 16S rRNA gene amplicons
+library(ggplot2)
+library(gg.gap)
+AOM=read.table("AOM.txt",header=T)
+ggplot(AOM,aes(x=sample,y=reabundance,fill=AOM))+geom_bar(stat="identity")+geom_text(aes(label=reabundance),position=position_stack(vjust=0.5))+theme(axis.text.x = element_text(angle = 45, hjust = 0.5, vjust = 0.5))
+
+NOB=read.table("NOB.txt",header=T)
+plotNOB=ggplot(NOB,aes(x=sample,y=reabundance,fill=NOM))+geom_bar(stat="identity",show.legend=TRUE)+theme(axis.text.x = element_text(angle = 45, hjust = 0.5, vjust = 0.5))
+plotNOB+theme_classic()
+plotNOBbreak=gg.gap(plot=plotNOB,
+                    segments=c(0.0012,0.006), 
+                    tick_width=c(0.0002,0.006), 
+                    rel_heights = c(0.2,0,0.25), 
+                    ylim=c(0,0.07)
+                    )
+plotNOBbreak
+
+1.2.2 for qPCR results 
+library(ggplot2)
+barAOM=read.table("barplot.txt",header = T)
+p=ggplot(barAOM) + 
+  geom_bar( aes(x=salinity, y=abundance, fill = AOM), stat="identity", alpha=1) +
+  facet_wrap(~AOMday, scales = 'free_x', ncol = 4) +
+  geom_errorbar(aes(x=salinity,ymin=abundance-SE, ymax=abundance+SE),width=0.2, colour="darkgrey", alpha=0.7, size=0.6)
+p
+
+library(tidyverse)
+library(ggplot2)
+library(Hmisc)
+library(agricolae)
+library(installr)
+day6cob = read.table("day6cob.txt",header = T)
+aovday6cob=aov(abundance ~ group, data=day6cob)
+duncanresult_day6cob = duncan.test(aovday6cob,"group",console = TRUE)
+
+2 DNA-SIP
+2.1 Qiime scripts for amplicons of 515F/806R (16S rRNA gene):
+Same as 1.1 except for the sequences shorter than 150 bp were removed in 1.1.8.
+
+2.2 Qiime scripts for amplicons of 200f/574R (comammox Nitrospira amoA gene):
+2.2.1 adjust direction of reads
+extract_barcodes.py -f reads1.fq1 -r reads1.fq2 -c barcode_paired_end -l 0 -L 0 -m for_split_chaoshi.txt -a -o direction
+
+2.2.2 cut barcode
+extract_barcodes.py -f direction/reads1.fastq -r direction/reads2.fastq -c barcode_paired_end -l 0 -L 12 -o realcut
+
+2.2.3 quality control
+sickle pe -f realcut/reads1.fastq -r realcut/reads2.fastq -t sanger -q -l 0 -x -o filter/reads1_trimmed.fastq -p filter/reads2_trimmed.fastq -s single
+
+2.2.4 assemble reads1 and reads2
+join_paired_ends.py -f filter/reads1_trimmed.fastq -r filter/reads2_trimmed.fastq -b realcut/barcodes.fastq -o joinpairend
+
+2.2.5 assign sequences to individual samples
+split_libraries_fastq.py -i joinpairend/fastqjoin.join.fastq -b joinpairend/fastqjoin.join_barcodes.fastq -m for_split_chaoshi.txt --store_qual_scores --rev_comp_barcode --rev_comp_mapping_barcodes --store_demultiplexed_fastq -o split_CS -q 19 -s 1 --barcode_type 12
+
+2.2.6 identify chimera
+identify_chimeric_seqs.py -m usearch61 -i split_7CS/seqs.fna -r newref141225_named.fasta -k -o idenchimera --non_chimeras_retention intersection
+
+2.2.7 remove chimera
+filter_fasta.py -f split_7CS/seqs.fna -s idenchimera/chimeras.txt -o removechimera/seqs_chimera_filtered.fna -n
+
+2.2.8 assigne to OTUs (90%)
+pick_open_reference_otus.py -i removechimera/seqs_chimera_filtered.fna -o pickotu -r newref141225_named.fasta -m usearch61 -p param_gchaoshiCOB.txt --suppress_align_and_tree
+
+2.2.9 convert format
+biom convert -i otu_table_mc2_w_tax.biom -o otu_table_mc2_w_tax.txt --to-tsv --header-key taxonomy
+
+2.2.10 translate nucleotide into protein sequences
+java -jar /home/server/RDPTools/FrameBot.jar framebot -N -l 30 -o chaoshiprot0325 newref141225FORZBprot.fasta 0325_chaoshi.fas
+
+2.3 Scripts for metagenome analysis:
+2.3.1 quality control
+fastqc reads1.fq reads2.fq
+trimmomatic-0.39.jar PE -threads 30 -summary summary.txt read1.raw.fastq read1.raw.fastq forward.clean.paired.fq.gz forward.clean.unpaired.fq.gz reverse.clean.paired.fq.gz reverse.clean.unpaired.fq.gz ILLUMINACLIP::2:30:10 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36
+
+2.3.2 assembly
+2.3.2.1 strategy 1
+spades.py --pe1-1 S7_1.fastq.gz --pe1-2 S7_2.fastq.gz --pe1-1 S8_1.fastq.gz --pe1-2 S8_2.fastq.gz --pe1-1 S9_1.fastq.gz --pe1-2 S9_2.fastq.gz --meta -o spades.out -k 21,33,55,75,101 -m 1500 -t 80
+
+2.3.2.2 strategy 2
+megahit -1 S7_1.fastq.gz,S8_1.fastq.gz,S9_1.fastq.gz -2 S7_2.fastq.gz,S8_2.fastq.gz,S9_2.fastq.gz -o megahit_1.out -t 40 > log.txt
+
+2.3.3 map sequence
+bwa index spades.out/scaffolds.fasta
+bwa mem -t 40 spades.out/scaffolds.fasta forward.clean.paired.fq.gz reverse.clean.paired.fq.gz>contigs.sam
+
+2.3.4 convert sam to bam
+samtools view -@ 40 -bt spades.out/scaffolds.fasta -o contigs.bam contigs.sam
+
+2.3.5 get depth
+samtools sort -@ 40 contigs.bam contigs.sort
+
+2.3.6 get index
+samtools index contigs.sort.bam
+
+2.3.7 calculate depth
+jgi_summarize_bam_contig_depths --outputDepth depth.txt --pairedContigs paired.txt --minContigLength 1000 --minContigDepth 2 contigs.sort.bam
+
+2.3.8 binning
+metabat2 -i spades.out/scaffolds.fasta -a depth.txt -o metabat2
+
+2.3.9 classify
+gtdbtk classify_wf --genome_dir Concoct_bin --out_dir Concoct_bin_gtdb_out --extension fasta --cpus 40 --pplacer_cpus 40
+
+2.3.10 check completeness and contamination
+checkm lineage_wf -t 6 -x fasta CheckM CheckM/checkmlineage_wf
+checkm qa CheckM/checkmlineage_wf/lineage.ms CheckM/checkmlineage_wf
+
+2.3.11 deduplicate
+dRep dereplicate drep_out -g dRep/*.fasta -comp 20 -con 10 -p 24
+
+2.3.12 gene calling
+prodigal -a bin.ffa -m -p meta -d bin.ffn -i bin.fa -f gff -o bin.prodigal_out
+prokka bin.fa --outdir prokka_annotation --prefix metagG --metagenome --kingdom Bacteria
+
+2.3.13 retrive amoCAB in Nitrospira bin98 and bin457
+
+2.4 phylogenetic tree of housekeeping gene:
+anvi-gen-contigs-database -f contigs.fasta -o contigs.db
+anvi-run-hmms -c contigs.db
+anvi-get-sequences-for-hmm-hits --external-genomes external-genomes.txt -o concatenated-proteins.fa --hmm-source Bacteria_71 --return-best-hit --get-aa-sequences –concatenate
+
+2.5 Retrieving amoA gene sequences of different ammonia oxidizers from metagenome data:
+2.5.1 blast CuMMO protein in metagenome data
+perl pmoAtBLASTn2_373refseed90.pl read.fas 0 10
+
+2.5.2 translate nucleotide to protein
+java -jar /home/server/RDPTools/FrameBot.jar framebot -N -l 30 -o cummo ref.fas read_picked.fasta
+
+2.6 R scripts for qPCR results:
+library(ggplot2)
+saltsip=read.table("SALT_SIP_tian.txt",header=T)
+library(scales)
+psalt=ggplot(saltsip, aes(x= density, y = relativeabundance, color = C, group = C)) +
+  geom_line() +
+  geom_point() +
+  facet_wrap(~AOM, scales = 'free_x', nrow = 3) +
+  geom_errorbar(aes(ymin = relativeabundance - SD, ymax = relativeabundance + SD), 
+                width = 0.001 )+ 
+  scale_x_continuous(limits=c(1.66, 1.75))
+psalt
+psaltplus=psalt +theme_minimal() +
+  scale_color_manual(values=c('#999999','#E69F00'))
+psaltplus
+
+freesip=read.table("FREE_SIP_tian.txt",header=T)
+pfree =ggplot(freesip, aes(x= density, y = relativeabundance, color = C, group = C)) +
+  geom_line() +
+  geom_point() +
+  facet_wrap(~AOM, scales = 'free_x', nrow = 3) +
+  geom_errorbar(aes(ymin = relativeabundance - SD, ymax = relativeabundance + SD), 
+                width = 0.001 )+ 
+  scale_x_continuous(limits = c(1.66, 1.75))
+pfree
+pfreeplus=pfree +theme_minimal() +
+  scale_color_manual(values=c('#999999','#E69F00'))
+pfreeplus
+
+2.7 R scripts for nqr and atp gene cluster
+library(ggplot2)
+library(gggenes)
+atp=read.table("atp.txt",header=T)
+ggplot(atp, aes(xmin = start, xmax = end, y = molecule, fill = gene, forward =direction,label = identity)) +
+  geom_gene_arrow(arrowhead_height = unit(3, "mm"), arrowhead_width = unit(1, "mm")) +
+  facet_wrap(~ molecule, scales = "free", ncol = 1) +
+  geom_gene_label(align = "left") +
+  scale_fill_brewer(palette = "Set3") +
+  theme_genes()
+
+library(RColorBrewer)
+colourCount = length(unique(nqr$gene))
+getPalette = colorRampPalette(brewer.pal(9, "Set1"))
+
+nqr=read.table("nqr.txt",header=T)
+ggplot(nqr, aes(xmin = start, xmax = end, y = molecule, fill = gene, forward =direction,label = identity)) +
+  geom_gene_arrow(arrowhead_height = unit(3, "mm"), arrowhead_width = unit(1, "mm")) +
+  geom_gene_label(align = "left") +
+  facet_wrap(~ molecule, scales = "free", ncol = 1) +
+  scale_fill_manual(values = getPalette(colourCount))+
+  theme_genes()
+
+3 PARs test
+3.1 R scripts for plots of NO2- and NO3- concentration in four tests
+library(ggplot2)
+library(dplyr)
+Wcoma=read.table("W_nitrification_denitrification_rate_comammox.txt",header = T)
+pd =position_dodge(0.1) 
+p1=ggplot(Wcoma, aes(x=hour, y=concentration, colour =inhibitor, group=inhibitor,shape=inhibitor)) + 
+  geom_point(position=pd, size=4)+
+  theme_bw()+
+  scale_color_manual(values = c("#0073C2FF","lightpink", "#EFC000FF")) + 
+  scale_shape_manual(values = c(15, 18,19))+
+  geom_errorbar(aes(ymin=concentration-SE, ymax=concentration+SE), colour="black", width=.6, position=pd) +
+  stat_smooth(method='lm',formula = y~x,se=FALSE,linetype="dashed")+
+  geom_line(position=pd)
+
+Waob=read.table("W_nitrification_rate_AOB.txt",header = T)
+pd = position_dodge(0.1) 
+p2=ggplot(Waob, aes(x=hour, y=concentration, colour =inhibitor, group=inhibitor,shape=inhibitor)) + 
+  geom_point(position=pd, size=4)+
+  theme_bw()+
+  scale_color_manual(values = c("#00BF7D","#0073C2FF")) + 
+  scale_shape_manual(values = c(17, 15))+
+  geom_errorbar(aes(ymin=concentration-SE, ymax=concentration+SE), colour="black", width=.6, position=pd) +
+  stat_smooth(method='lm',formula = y~x,se=FALSE,linetype="dashed")
