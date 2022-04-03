@@ -99,65 +99,188 @@ biom convert -i otu_table_mc2_w_tax.biom -o otu_table_mc2_w_tax.txt --to-tsv --h
 java -jar /home/server/RDPTools/FrameBot.jar framebot -N -l 30 -o chaoshiprot0325 newref141225FORZBprot.fasta 0325_chaoshi.fas
 
 2.3 Scripts for metagenome analysis:
-2.3.1 quality control
-fastqc reads1.fq reads2.fq
-trimmomatic-0.39.jar PE -threads 30 -summary summary.txt read1.raw.fastq read1.raw.fastq forward.clean.paired.fq.gz forward.clean.unpaired.fq.gz reverse.clean.paired.fq.gz reverse.clean.unpaired.fq.gz ILLUMINACLIP::2:30:10 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36
+2.3.1. fastqc scan quality of the raw data
+fastqc *
 
-2.3.2 assembly
-2.3.2.1 strategy 1
-spades.py --pe1-1 S7_1.fastq.gz --pe1-2 S7_2.fastq.gz --pe1-1 S8_1.fastq.gz --pe1-2 S8_2.fastq.gz --pe1-1 S9_1.fastq.gz --pe1-2 S9_2.fastq.gz --meta -o spades.out -k 21,33,55,75,101 -m 1500 -t 80
+2.3.2. quality control
+java -jar /lustre/quanzx/Trimmomatic-0.39/trimmomatic-0.39.jar PE -threads 80 -summary summary.txt S7/8/9_1.clean.fq.gz S7/8/9_2.clean.fq.gz S7/8/9_1.clean.paired.fq.gz S7/8/9_1.clean.unpaired.fq.gz S7/8/9_2.clean.paired.fq.gz S7/8/9_2.clean.unpaired.fq.gz ILLUMINACLIP:adaptor.txt:2:30:10 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36
 
-2.3.2.2 strategy 2
-megahit -1 S7_1.fastq.gz,S8_1.fastq.gz,S9_1.fastq.gz -2 S7_2.fastq.gz,S8_2.fastq.gz,S9_2.fastq.gz -o megahit_1.out -t 40 > log.txt
+2.3.3. separate assembly strategy
+2.3.3.1 metaspades assembly
+spades.py -1 S7_1.clean.paired.fq.gz -2 S7_2.clean.paired.fq.gz --meta -o S7_spades.out -t 80 -m 500 -k 21,33,55,75
+spades.py -1 S8_1.clean.paired.fq.gz -2 S8_2.clean.paired.fq.gz --meta -o S8_spades.out -t 80 -m 500 -k 21,33,55,75
+spades.py -1 S9_1.clean.paired.fq.gz -2 S9_2.clean.paired.fq.gz --meta -o S9_spades.out -t 80 -m 500 -k 21,33,55,75
 
-2.3.3 map sequence
-bwa index spades.out/scaffolds.fasta
-bwa mem -t 40 spades.out/scaffolds.fasta forward.clean.paired.fq.gz reverse.clean.paired.fq.gz>contigs.sam
+2.3.3.2 bwa mapping coverage calculation and binning
+###Sample S7 coverage
+bwa index S7_spades.out/scaffolds.fasta
+bwa mem -t 40 S7_spades.out/scaffolds.fasta S7_1.clean.paired.fq.gz S7_2.clean.paired.fq.gz > S7_scaffolds.sam
+samtools view -@ 40 -bt S7_spades.out/scaffolds.fasta -o S7_scaffolds.bam S7_scaffolds.sam
+samtools sort -@ 40 S7_scaffolds.bam -o S7_scaffolds.sort
+samtools index S7_scaffolds.sort
+jgi_summarize_bam_contig_depths --outputDepth S7_depth.txt --pairedContigs S7_paired.txt --minContigLength 1000 --minContigDepth 2 S7_scaffolds.sort
+metabat2 -i S7_spades.out/scaffolds.fasta -a S7_depth.txt -o S7_metabat/bin
 
-2.3.4 convert sam to bam
-samtools view -@ 40 -bt spades.out/scaffolds.fasta -o contigs.bam contigs.sam
+###Sample S8 coverage
+bwa index S8_spades.out/scaffolds.fasta
+bwa mem -t 40 S8_spades.out/scaffolds.fasta S8_1.clean.paired.fq.gz S8_2.clean.paired.fq.gz > S8_scaffolds.sam
+samtools view -@ 40 -bt S8_spades.out/scaffolds.fasta -o S8_scaffolds.bam S8_scaffolds.sam
+samtools sort -@ 40 S8_scaffolds.bam -o S8_scaffolds.sort
+samtools index S8_scaffolds.sort
+jgi_summarize_bam_contig_depths --outputDepth S8_depth.txt --pairedContigs S8_paired.txt --minContigLength 1000 --minContigDepth 2 S8_scaffolds.sort
+metabat2 -i S8_spades.out/scaffolds.fasta -a S8_depth.txt -o S8_metabat/bin
 
-2.3.5 get depth
-samtools sort -@ 40 contigs.bam contigs.sort
+###Sample S9 coverage
+bwa index S9_spades.out/scaffolds.fasta
+bwa mem -t 40 S9_spades.out/scaffolds.fasta S9_1.clean.paired.fq.gz S9_2.clean.paired.fq.gz > S9_scaffolds.sam
+samtools view -@ 40 -bt S9_spades.out/scaffolds.fasta -o S9_scaffolds.bam S9_scaffolds.sam
+samtools sort -@ 40 S9_scaffolds.bam -o S9_scaffolds.sort
+samtools index S9_scaffolds.sort
+jgi_summarize_bam_contig_depths --outputDepth S9_depth.txt --pairedContigs S9_paired.txt --minContigLength 1000 --minContigDepth 2 S9_scaffolds.sort
+metabat2 -i S9_spades.out/scaffolds.fasta -a S9_depth.txt -o S9_metabat/bin
 
-2.3.6 get index
-samtools index contigs.sort.bam
+2.3.3.3 genome taxonomic annotation
+gtdbtk classify_wf --genome_dir S7/8/9_metabat --out_dir S7/8/9_gtdb_out --extension fa --cpus 40 --pplacer_cpus 40
 
-2.3.7 calculate depth
-jgi_summarize_bam_contig_depths --outputDepth depth.txt --pairedContigs paired.txt --minContigLength 1000 --minContigDepth 2 contigs.sort.bam
+2.3.3.4 contamination and completeness estimation
+checkm lineage_wf -t 10 -x fa S7/8/9_metabat S7/8/9_metabat/checkmlineage_wf
 
-2.3.8 binning
-metabat2 -i spades.out/scaffolds.fasta -a depth.txt -o metabat2
+2.3.4. co-assembly strategy
+2.3.4.1 megahit assembly
+megahit -1 S7_1.clean.paired.fq.gz,S8_1.clean.paired.fq.gz,S9_1.clean.paired.fq.gz -2 S7_2.clean.paired.fq.gz,S8_2.clean.paired.fq.gz,S9_2.clean.paired.fq.gz -o coassem_megahit
+cd coassem_megahit
+mv final.contigs.fa megahit_scaffolds.fasta
+bwa index megahit_scaffolds.fasta
+bwa mem -t 80 megahit_scaffolds.fasta ../S7_1.clean.paired.fq.gz ../S7_2.clean.paired.fq.gz > S7.sam
+bwa mem -t 80 megahit_scaffolds.fasta ../S8_1.clean.paired.fq.gz ../S8_2.clean.paired.fq.gz > S8.sam
+bwa mem -t 80 megahit_scaffolds.fasta ../S9_1.clean.paired.fq.gz ../S9_2.clean.paired.fq.gz > S9.sam
+samtools view -@ 80 -bt megahit_scaffolds.fasta -o S7.bam S7.sam
+samtools sort -@ 80 S7.bam -o S7.sort.bam
+samtools index -@ 80 S7.sort.bam
+samtools view -@ 80 -bt megahit_scaffolds.fasta -o S8.bam S8.sam
+samtools sort -@ 80 S8.bam -o S8.sort.bam
+samtools index -@ 80 S8.sort.bam
+samtools view -@ 80 -bt megahit_scaffolds.fasta -o S9.bam S9.sam
+samtools sort -@ 80 S9.bam -o S9.sort.bam
+samtools index -@ 80 S9.sort.bam
 
-2.3.9 classify
-gtdbtk classify_wf --genome_dir Concoct_bin --out_dir Concoct_bin_gtdb_out --extension fasta --cpus 40 --pplacer_cpus 40
+jgi_summarize_bam_contig_depths --outputDepth coassem.depth --pairedContigs coassem.paired --minContigLength 1500 --minContigDepth 2 S7.sort.bam S8.sort.bam S9.sort.bam
+metabat2 -i megahit_scaffolds.fasta -a coassem.depth -o coassem_metabat/bin
+gtdbtk classify_wf --genome_dir coassem_metabat --out_dir gtdb_out --extension fa --cpus 40 --pplacer_cpus 40
+checkm lineage_wf -t 10 -x fa coassem_metabat coassem_metabat/checkmlineage_wf
 
-2.3.10 check completeness and contamination
-checkm lineage_wf -t 6 -x fasta CheckM CheckM/checkmlineage_wf
-checkm qa CheckM/checkmlineage_wf/lineage.ms CheckM/checkmlineage_wf
+2.3.5. pool all genus Nitrospira MAGs and deduplicate using dRep tool
+dRep dereplicate drep_out -g Nitrospira/*.fa -comp 20 -con 10 -p 30
 
-2.3.11 deduplicate
-dRep dereplicate drep_out -g dRep/*.fasta -comp 20 -con 10 -p 24
+2.3.6. gene calling and annotation
+parallel -j 30 "prodigal -a {}.ffa -m -p meta -d {}.ffn -i {}.fasta -f gff -o {}.gff" ::: *.fa
+for i in *ffa; /home/server/kofamscan/kofamscan-1.2.0/exec_annotation -o $i.kofam $i
 
-2.3.12 gene calling
-prodigal -a bin.ffa -m -p meta -d bin.ffn -i bin.fa -f gff -o bin.prodigal_out
-prokka bin.fa --outdir prokka_annotation --prefix metagG --metagenome --kingdom Bacteria
+2.3.7. phylogenetic tree construction
+###reference genomes download through batch entrez
+conda activate anvio-6.2
+###anvio only recognize suffix .fa and .fasta file 
+for i in *fa;anvi-script-FASTA-to-contigs-db $i
+###phylogenetic analysis (MAGs with completeness > 50%, contamination < 5% were selected)
+anvi-gen-genomes-storage -e external_genomes.txt -o Nitrospira-GENOMES.db
+-------------------------------------
+########external_genomes.txt format
+name	contigs_db_path
+GCA_000020985	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_000020985.db
+GCA_000196815	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_000196815.db
+GCA_000284315	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_000284315.db
+GCA_000299235	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_000299235.db
+GCA_001273775	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_001273775.db
+GCA_001458695	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_001458695.db
+GCA_001458735	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_001458735.db
+GCA_001458775	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_001458775.db
+GCA_001464735	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_001464735.db
+GCA_001567445	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_001567445.db
+GCA_001644405	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_001644405.db
+GCA_001707915	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_001707915.db
+GCA_001724505	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_001724505.db
+GCA_002083355	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_002083355.db
+GCA_002083365	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_002083365.db
+GCA_002083405	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_002083405.db
+GCA_002083555	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_002083555.db
+GCA_002083565	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_002083565.db
+GCA_002238765	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_002238765.db
+GCA_002254325	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_002254325.db
+GCA_002254365	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_002254365.db
+GCA_002299405	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_002299405.db
+GCA_002331335	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_002331335.db
+GCA_002331625	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_002331625.db
+GCA_002380995	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_002380995.db
+GCA_002420045	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_002420045.db
+GCA_002420105	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_002420105.db
+GCA_002420115	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_002420115.db
+GCA_002435325	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_002435325.db
+GCA_002435405	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_002435405.db
+GCA_002451055	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_002451055.db
+GCA_002473245	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_002473245.db
+GCA_002483475	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_002483475.db
+GCA_002634385	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_002634385.db
+GCA_002869855	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_002869855.db
+GCA_002869885	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_002869885.db
+GCA_002869925	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_002869925.db
+GCA_003135435	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_003135435.db
+GCA_003152135	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_003152135.db
+GCA_003456185	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_003456185.db
+GCA_003456235	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_003456235.db
+GCA_003456605	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_003456605.db
+GCA_003508555	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_003508555.db
+GCA_003529185	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_003529185.db
+GCA_003576955	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_003576955.db
+GCA_900169565	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_900169565.db
+GCA_900170025	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_900170025.db
+GCA_900403705	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_900403705.db
+GCA_014058405	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/GCA_014058405.db
+Nitrospira_bin155	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/Coassem_155.db
+Nitrospira_bin175	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/Coassem_175.db
+Nitrospira_bin389	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/Coassem_389.db
+Nitrospira_bin457	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/Coassem_457.db
+Nitrospira_bin117	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/S8_bin_117.db
+Nitrospira_bin77	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/S8_bin_77.db
+Nitrospira_bin72	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/S9_bin_72.db
+Nitrospira_bin98	/home/disk2/zry/JR/coassembly/Nitrospira/phylogenetic/S9_bin_98.db
 
-2.3.13 retrive amoCAB in Nitrospira bin98 and bin457
+-------------------------------------
+anvi-get-sequences-for-hmm-hits --external-genomes external_genomes.txt --hmm-source Bacteria_71 -o concatenated-proteins.fa --return-best-hit --get-aa-sequences --concatenate 
 
-2.4 phylogenetic tree of housekeeping gene:
-anvi-gen-contigs-database -f contigs.fasta -o contigs.db
-anvi-run-hmms -c contigs.db
-anvi-get-sequences-for-hmm-hits --external-genomes external-genomes.txt -o concatenated-proteins.fa --hmm-source Bacteria_71 --return-best-hit --get-aa-sequences –concatenate
+nohup raxmlHPC-PTHREADS-AVX2 -f a -x 12345 -p 12345 -# 1000 -m PROTGAMMAWAG -s concatenated-proteins.fa -n Nitrospira-raxml-1 -T 30 &
 
-2.5 Retrieving amoA gene sequences of different ammonia oxidizers from metagenome data:
-2.5.1 blast CuMMO protein in metagenome data
+2.3.8. extend incomplete amoA gene
+
+2.3.8.1 Reassemble Nitrospira_bin98 for extending incomplete amoA gene
+  
+###Nitrospira_bin98 showed high ANI value between Candidatus Nitrospira kreftii
+makeblastdb -in kreftii.fasta -dbtype nucl -parse_seqids
+fq2fa --merge S9_1.clean.paired.fq S9_2.clean.paired.fq read.fas --filter
+blastn -db kreftii.fasta -query /home/disk2/zry/JR/Trimmomatic_out/9/read.fas -out results.out -outfmt 6 -evalue 0.00001 -perc_identity 95 -num_threads 30
+awk '{print $1}' results.out | uniq > names.txt
+/home/server/bbmap/filterbyname.sh in=/home/disk2/zry/JR/Trimmomatic_out/9/S9_1.clean.paired.fq in2=/home/disk2/zry/JR/Trimmomatic_out/9/S9_2.clean.paired.fq out=read_1.fq out2=read_2.fq names=names.txt include=t
+spades.py -1 read_1.fq -2 read_2.fq --meta -o spades.out -t 30 -k 21,33,55,75,101,125
+
+2.3.8.2 extend contigs of Nitrospira bin457 for extending incomplete amoA gene
+./dist/extender_wrapper --m1 S9_1.clean.paired.fq --m2 S9_2.clean.paired.fq --out meta Coassem_457.fasta
+/home/server/kofamscan/kofamscan-1.2.0/exec_annotation -o extend_457.fasta.kofam extend_457.fasta
+
+###annotated amoA was extracted and mapped clean reads to it.
+bwa index amoA.fasta
+bwa mem -t 40 amoA.fasta S9_1.clean.paired.fq.gz S9_2.clean.paired.fq.gz > amoA.sam
+samtools view -@ 40 -bt amoA.fasta -o amoA.bam amoA.sam
+samtools sort -@ 40 amoA.bam -o amoA.sort
+samtools index amoA.sort
+###mapping result was visulized in IGV tool for accuracy estimation of extending amoA
+
+2.4 Retrieving amoA gene sequences of different ammonia oxidizers from metagenome data:
+2.4.1 blast CuMMO protein in metagenome data
 perl pmoAtBLASTn2_373refseed90.pl read.fas 0 10
 
-2.5.2 translate nucleotide to protein
+2.4.2 translate nucleotide to protein
 java -jar /home/server/RDPTools/FrameBot.jar framebot -N -l 30 -o cummo ref.fas read_picked.fasta
 
-2.6 R scripts for qPCR results:
+2.5 R scripts for qPCR results:
 library(ggplot2)
 saltsip=read.table("SALT_SIP_tian.txt",header=T)
 library(scales)
@@ -186,7 +309,7 @@ pfreeplus=pfree +theme_minimal() +
   scale_color_manual(values=c('#999999','#E69F00'))
 pfreeplus
 
-2.7 R scripts for nqr and atp gene cluster
+2.6 R scripts for nqr and atp gene cluster
 library(ggplot2)
 library(gggenes)
 atp=read.table("atp.txt",header=T)
